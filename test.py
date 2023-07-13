@@ -1,16 +1,19 @@
 import math
-import os
+import time
+
 import numpy as np
 import matplotlib.pyplot as plt
-import imageio
-
+import streamlit as st
+import streamlit.components.v1 as com
 
 class WaldSPRT:
-
-    def __init__(self, alpha, beta, epsilon):
+    def __init__(self, alpha, beta, epsilon, patience, min_alpha):
         self.alpha = alpha
         self.beta = beta
         self.epsilon = epsilon
+        self.patience = patience
+        self.min_alpha = min_alpha
+        self.prob_list = []
 
     @staticmethod
     def log_likelihood(y, n, p):
@@ -47,81 +50,95 @@ class WaldSPRT:
         else:
             return "Continue collecting data"
 
-    def plot_walds_sprt(self, data, p0, p1, iteration):
-        A = math.log(self.beta / (1 - self.alpha))
-        B = math.log((1 - self.beta) / self.alpha)
-
-        n = len(data)
-        y = np.count_nonzero(data)
-
-        p_values = np.linspace(0, 1, 1000)
-        likelihood_ratios = [self.log_likelihood(y, n, p) - self.log_likelihood(y, n, p0) if p > 0 and p < 1 else float('-inf') for p in p_values]
-
-        plt.plot(p_values, likelihood_ratios, label='Likelihood Ratio')
-        plt.axhline(y=A, color='r', linestyle='--', label='Decision Boundary A')
-        plt.axhline(y=B, color='g', linestyle='--', label='Decision Boundary B')
-        plt.xlabel('Population Probability')
-        plt.ylabel('Log Likelihood Ratio')
-        plt.legend()
-
-        p_new = (p0 + p1) / 2
-        current_lr = self.log_likelihood(y, n, p_new) - self.log_likelihood(y, n, p0)
-        margin = (B - A) / 2
-
-        if not math.isinf(current_lr):
-            plt.ylim(current_lr - margin, current_lr + margin)
-        else:
-            fallback_margin = 0.1
-            plt.ylim(B - fallback_margin, A + fallback_margin)
-
-        x_margin = 0.1
-        plt.xlim(p0 - x_margin, p1 + x_margin)
-
-        output_dir = 'plots'
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
-        plt.savefig(f"{output_dir}/iteration_{iteration}.png")
-        plt.close()
-
     def estimate_probability(self, data, p0, p1):
-        iteration = 1
         while abs(p1 - p0) > self.epsilon:
             p_new = (p0 + p1) / 2
 
             result = self.walds_sprt(data, p0, p_new)
-
-            self.plot_walds_sprt(data, p0, p_new, iteration)
 
             if result == "H1":
                 p0 = p_new
             else:
                 p1 = p_new
 
-            iteration += 1
-
         return (p0 + p1) / 2
 
+    def early_stopping(self):
+        if len(self.prob_list) < self.patience:
+            return 1
 
-def create_gif(input_folder, output_filename, duration=0.5):
-    filenames =sorted(os.listdir(input_folder))
-    images = [imageio.imread(os.path.join(input_folder, filename)) for filename in filenames if filename.endswith('.png')]
-    imageio.mimsave(output_filename, images, duration=duration)
+        checklist = self.prob_list[-self.patience:]
+        change = max(checklist) - min(checklist)
 
+        if change < self.min_alpha:
+            return 0
 
-# Example usage
-sample_data = np.random.binomial(1, 0.7, 200000)
+        return 1
+
+##settings
+guess_prob = 0.0
+guess_tolerance = 0
+alpha = 1e-10
+beta = 1e-10
+epsilon = 1e-30
+shrink_factor = 0.5
+
+guess_prob_list = []
+sample_list = []
+actual_prob = 0.0
+population_size = 0
+st.title("Welcome to HEADS/TAILS Predictor")
+# gif embed
+com.html("<div style='display: flex; align-items: center; justify-content: center;'><img src='https://i.gifer.com/Fw3P.gif' width='100' height='100'></div>")
+
+form = st.form(key='input_form')
+heads = int(form.number_input(label='Enter No. Of HEADS in Population'))
+tails = int(form.number_input(label='Enter No. Of TAILS in Population'))
+sampling_rate = int(form.slider(label = 'Select Sample Size',min_value= 100, max_value= 1000,step= 100))
+submit_button = form.form_submit_button(label='Submit')
+if submit_button:
+    population_size = heads+tails
+    actual_prob = heads/population_size
+
+population_data = np.random.binomial(1, actual_prob, population_size)
+sample_size = sampling_rate
+
+sample = st.empty()
+prob = st.empty()
+sprt = WaldSPRT(alpha, beta, epsilon, 2000, 1)
+iteration_list = [0]
 p0 = 0.0
 p1 = 1.0
-alpha = 1e-5
-beta = 1e-5
-epsilon = 1e-20
+while abs(actual_prob - guess_prob) > guess_tolerance and sample_size < population_size:
 
-sprt = WaldSPRT(alpha, beta, epsilon)
-estimated_probability = sprt.estimate_probability(sample_data, p0, p1)
-print(estimated_probability)
+    subsample = population_data[0:sample_size]
+    guess_prob = sprt.estimate_probability(subsample, p0, p1)
+    print(f'Sample Size:{sample_size}')
+    sample.header(f'SAMPLE SIZE: {sample_size}')
+    sample_list.append(sample_size)
+    print(f'Guess:{guess_prob}')
+    prob.header(f'ESTIMATED PROB OF HEAD: {guess_prob}')
+    guess_prob_list.append(guess_prob)
+    sprt.prob_list.append(guess_prob)
+    iteration_list.append(iteration_list[-1] + 1)
 
-input_folder = 'plots'
-output_filename = 'wald_sprt.gif'
-duration = 0.2  # Adjust this value to control the duration of each frame in the GIF
+    if sprt.early_stopping() != 1:
+        st.markdown("EARLY STOPPING")
+        break
+    p0 = max(p0, guess_prob - (p1 - p0) * shrink_factor)  # Update p0 with a reduced range
+    p1 = min(p1, guess_prob + (p1 - p0) * shrink_factor)  # Update p1 with a reduced range
 
-create_gif(input_folder, output_filename, duration)
+    sample_size = sample_size + sampling_rate
+    time.sleep(1)
+
+# Plotting
+fig = plt.figure()
+ax = fig.add_subplot(111, projection='3d')
+ax.set_xlabel('Predicted Probability')
+ax.set_ylabel('Sample Size')
+ax.set_zlabel("Iteration")
+ax.scatter(guess_prob_list, sample_list, iteration_list[:-1])
+
+# Display the plot in Streamlit
+st.pyplot(fig)
+
