@@ -142,3 +142,5 @@ ax.scatter(guess_prob_list, sample_list, iteration_list[:-1])
 # Display the plot in Streamlit
 st.pyplot(fig)
 
+st.header(f'Accuracy: {abs(guess_prob - actual_prob) * 100}')
+
