@@ -142,5 +142,5 @@ ax.set_facecolor('gray')
 # Display the plot in Streamlit
 st.pyplot(fig)
 
-st.header(f'Accuracy: {100 - (abs(guess_prob - actual_prob) * 100})')
+st.header(f'Accuracy: {100 - (abs(guess_prob - actual_prob) * 100)}')
 
