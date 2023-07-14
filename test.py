@@ -138,9 +138,9 @@ ax.set_xlabel('Predicted Probability')
 ax.set_ylabel('Sample Size')
 ax.set_zlabel("Iteration")
 ax.scatter(guess_prob_list, sample_list, iteration_list[:-1])
-
+ax.set_facecolor('gray')
 # Display the plot in Streamlit
 st.pyplot(fig)
 
-st.header(f'Accuracy: {abs(guess_prob - actual_prob) * 100}')
+st.header(f'Accuracy: {100 - (abs(guess_prob - actual_prob) * 100})')
 
