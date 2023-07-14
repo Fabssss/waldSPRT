@@ -1,10 +1,11 @@
 import math
 import time
-
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas
 import streamlit as st
 import streamlit.components.v1 as com
+
 
 class WaldSPRT:
     def __init__(self, alpha, beta, epsilon, patience, min_alpha):
@@ -75,61 +76,91 @@ class WaldSPRT:
 
         return 1
 
-##settings
-guess_prob = 0.0
-guess_tolerance = 0
+
+# Settings(HyperParameters)
 alpha = 1e-10
 beta = 1e-10
 epsilon = 1e-30
 shrink_factor = 0.5
+patience = 2000
+min_alpha = 1
 
+# Parameters
 guess_prob_list = []
 sample_list = []
 actual_prob = 0.0
 population_size = 0
+guess_prob = 0.0
+
 st.title("Welcome to HEADS/TAILS Predictor")
 # gif embed
-com.html("<div style='display: flex; align-items: center; justify-content: center;'><img src='https://i.gifer.com/Fw3P.gif' width='100' height='100'></div>")
+com.html(
+    "<div style='display: flex; align-items: center; justify-content: center;'><img src='https://i.gifer.com/Fw3P.gif' width='100' height='100'></div>")
 
+# hyperparamter change
+st.sidebar.header("Change HyperParameters")
+with st.sidebar.form("hyp_form"):
+    st.header('Alpha & Beta')
+    alp = st.number_input("Alpha")
+    bet = st.number_input("Beta")
+    st.header('Epsilon changes precision')
+    eps = st.number_input('Epsilon')
+    shrink = st.number_input("Shrink Factor for each iteration")
+    st.header("Early Stopping metrics")
+    pat = int(st.number_input('Patience'))
+    min_alp = st.number_input("Minimum Alpha")
+    submit = st.form_submit_button("Change HyperParameters")
+# change hyperparameters if submitted
+if submit:
+    alpha = alp
+    beta = bet
+    epsilon = eps
+    shrink_factor = shrink
+    patience = pat
+    min_alpha = min_alp
+
+# input form
 form = st.form(key='input_form')
 heads = int(form.number_input(label='Enter No. Of HEADS in Population'))
 tails = int(form.number_input(label='Enter No. Of TAILS in Population'))
-sampling_rate = int(form.slider(label = 'Select Sample Size',min_value= 100, max_value= 1000,step= 100))
+sampling_rate = int(form.slider(label='Select Sample Size', min_value=100, max_value=1000, step=100))
 submit_button = form.form_submit_button(label='Submit')
 if submit_button:
-    population_size = heads+tails
-    actual_prob = heads/population_size
+    population_size = heads + tails
+    actual_prob = heads / population_size
 
 population_data = np.random.binomial(1, actual_prob, population_size)
 sample_size = sampling_rate
-
+dataframe = st.empty()
 sample = st.empty()
 prob = st.empty()
-sprt = WaldSPRT(alpha, beta, epsilon, 2000, 1)
+sprt = WaldSPRT(alpha, beta, epsilon, patience, min_alpha)
 iteration_list = [0]
 p0 = 0.0
 p1 = 1.0
-while abs(actual_prob - guess_prob) > guess_tolerance and sample_size < population_size:
-
+while sample_size < population_size:
     subsample = population_data[0:sample_size]
     guess_prob = sprt.estimate_probability(subsample, p0, p1)
-    print(f'Sample Size:{sample_size}')
+    print(f'Sample Size: {sample_size}')
     sample.header(f'SAMPLE SIZE: {sample_size}')
     sample_list.append(sample_size)
-    print(f'Guess:{guess_prob}')
+    print(f'Guess: {guess_prob}')
     prob.header(f'ESTIMATED PROB OF HEAD: {guess_prob}')
     guess_prob_list.append(guess_prob)
     sprt.prob_list.append(guess_prob)
     iteration_list.append(iteration_list[-1] + 1)
 
-    if sprt.early_stopping() != 1:
+    if sprt.early_stopping() == 0:
         st.markdown("EARLY STOPPING")
         break
-    p0 = max(p0, guess_prob - (p1 - p0) * shrink_factor)  # Update p0 with a reduced range
-    p1 = min(p1, guess_prob + (p1 - p0) * shrink_factor)  # Update p1 with a reduced range
+
+    if actual_prob < 0.5:
+        p0 = max(p0, guess_prob - (p1 - guess_prob) * shrink_factor)  # Update p0 with a reduced range
+    else:
+        p1 = min(p1, guess_prob + (guess_prob - p0) * shrink_factor)  # Update p1 with a reduced range
 
     sample_size = sample_size + sampling_rate
-    time.sleep(1)
+    time.sleep(0.5)
 
 # Plotting
 fig = plt.figure()
@@ -142,5 +173,8 @@ ax.set_facecolor('gray')
 # Display the plot in Streamlit
 st.pyplot(fig)
 
-st.header(f'Accuracy: {100 - (abs(guess_prob - actual_prob) * 100)}')
+# display dataframe
+st.dataframe(pandas.DataFrame(guess_prob_list, columns=['GUESSED PROBABILITY']))
 
+# display accuracy metric
+st.header(f'Accuracy: {100 - (abs(guess_prob - actual_prob) * 100)}')
