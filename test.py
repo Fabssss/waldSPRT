@@ -154,6 +154,7 @@ while sample_size < population_size:
         st.markdown("EARLY STOPPING")
         break
 
+    shrink_factor = shrink_factor + 0.05
     if actual_prob < 0.5:
         p0 = max(p0, guess_prob - (p1 - guess_prob) * shrink_factor)  # Update p0 with a reduced range
     else:
