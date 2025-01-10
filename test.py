@@ -78,7 +78,7 @@ class WaldSPRT:
 
 
 # Settings(HyperParameters)
-alpha = 1e-10
+alpha = 0.05
 beta = 1e-10
 epsilon = 1e-30
 shrink_factor = 0.5
